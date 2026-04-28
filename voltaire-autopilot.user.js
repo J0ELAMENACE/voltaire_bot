@@ -248,7 +248,7 @@
 
   function autoClickNavButtons() {
     const now = Date.now();
-    if (now - lastAutoClickTime < 2000) { return; }
+    if (now - lastAutoClickTime < 4000) { return; }
 
     // Ne pas auto-cliquer sur la page de sélection de module
     if (window.location.href.includes('selection-module') ||
@@ -445,8 +445,8 @@
 
         if (fault === null) {
           setResult('✅ Pas de faute', '');
-          setStatus('Clic dans 5s...');
-          await new Promise((r) => setTimeout(r, 5000));
+          setStatus('Clic dans 2s...');
+          await new Promise((r) => setTimeout(r, 2000));
           // Auto-clic "Il n'y a pas de faute"
           const noFaultBtn = Array.from(document.querySelectorAll('[data-testid="button"]'))
             .find((el) => el.offsetParent && el.textContent.trim().toUpperCase().includes('PAS DE FAUTE'));
@@ -458,8 +458,8 @@
           }
         } else {
           setResult('⚠️ Faute détectée :', fault, '#f38ba8');
-          setStatus('Clic dans 5s...');
-          await new Promise((r) => setTimeout(r, 5000));
+          setStatus('Clic dans 2s...');
+          await new Promise((r) => setTimeout(r, 2000));
           const clicked = await autoClickWord(fault);
           if (clicked) {
             setStatus('✅ Cliqué !');
@@ -487,15 +487,8 @@
 
         if (synonym) {
           setResult(`Synonyme de "${data.word}" :`, synonym, '#a6e3a1');
-          setStatus('Clic dans 5s...');
-          await new Promise((r) => setTimeout(r, 5000));
-          // Auto-clic sur l'option correspondante
-          const optionEl = data.optionElements?.find((el) => {
-            return el.textContent.trim().toLowerCase().includes(synonym.toLowerCase()) ||
-                   synonym.toLowerCase().includes(el.textContent.trim().toLowerCase());
-          });
-          setStatus('Clic dans 5s...');
-          await new Promise((r) => setTimeout(r, 5000));
+          setStatus('Clic dans 2s...');
+          await new Promise((r) => setTimeout(r, 2000));
 
           // Re-chercher l'élément APRÈS le délai (le DOM React peut avoir été recréé)
           const freshOptions = Array.from(document.querySelectorAll('div, button'))
