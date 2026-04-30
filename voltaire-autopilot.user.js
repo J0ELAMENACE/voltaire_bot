@@ -17,7 +17,7 @@
 
   const CONFIG = {
     API_URL: 'http://localhost:11434/api/chat',
-    MODEL_NAME: 'gema4:31b-cloud',
+    MODEL_NAME: 'gemma4:31b-cloud',
     DELAY: 1500,
   };
 
