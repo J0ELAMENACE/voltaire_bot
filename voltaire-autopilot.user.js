@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Projet Voltaire Bot
 // @namespace    pv-bot-local
-// @version      3.0.0
+// @version      3.1.0
 // @description  Analyse les exercices et auto-clique SUIVANT/CONTINUER
 // @match        https://apprentissage.appli3.projet-voltaire.fr/*
 // @match        http://apprentissage.appli3.projet-voltaire.fr/*
@@ -69,7 +69,6 @@
     const answer = await callLLM(prompt);
     if (!answer) { return null; }
 
-    // Prendre UNIQUEMENT le premier mot, ignorer tout le reste
     const firstWord = answer.trim()
       .replace(/^[«»"'→\-.:]+/, '')
       .split(/[\s\n,.;:!?]/)[0]
@@ -111,7 +110,6 @@
   const EXCLUDED = ['si vous voyez une faute', 'cliquez sur le bouton', "il n'y a pas de faute", 'cliquez dessus', "n'affecte pas", 'utiliser un indice', 'progression'];
 
   function extractSentence() {
-    // Méthode 1 : assembler les mots cliquables (divs r-1loqt21) dans l'ordre DOM
     const wordDivs = Array.from(document.querySelectorAll('div[class*="r-1loqt21"]'))
       .filter((el) => {
         if (!el.offsetParent) { return false; }
@@ -123,7 +121,6 @@
       });
 
     if (wordDivs.length >= 3) {
-      // Dédoublonner (chaque mot apparaît 4x) en prenant le premier de chaque groupe
       const seen = new Set();
       const words = [];
       for (const div of wordDivs) {
@@ -131,12 +128,9 @@
         if (!seen.has(t)) { seen.add(t); words.push(t); }
       }
       const assembled = words.join(' ').replace(/\s([.,;:!?])/g, '$1');
-      if (assembled.split(/\s+/).length >= 4) {
-        return assembled;
-      }
+      if (assembled.split(/\s+/).length >= 4) { return assembled; }
     }
 
-    // Méthode 2 : data-testid html/body/i
     for (const id of ['html', 'body', 'i']) {
       const el = document.querySelector(`[data-testid="${id}"]`);
       if (!el || !el.offsetParent) { continue; }
@@ -145,7 +139,6 @@
       if (t.length > 5 && t.length < 300 && !EXCLUDED.some((p) => tl.includes(p))) { return t; }
     }
 
-    // Méthode 3 : chercher un div avec 5-25 mots
     const candidates = Array.from(document.querySelectorAll('p, div'))
       .filter((el) => {
         if (!el.offsetParent || ['BUTTON', 'NAV', 'HEADER'].includes(el.tagName)) { return false; }
@@ -164,14 +157,12 @@
     let word = null;
     let optionElements = [];
 
-    // Méthode 1 : mot via data-testid="b"
     const spans = Array.from(document.querySelectorAll('[data-testid="b"]')).filter((el) => el.offsetParent);
     if (spans.length > 0) {
       const assembled = spans.map((el) => el.textContent.trim()).filter(Boolean).join('');
       if (assembled && assembled.length < 60) { word = assembled; }
     }
 
-    // Méthode 2 : mot en gras (nouveau format cartes)
     if (!word) {
       const bold = Array.from(document.querySelectorAll('div, span, strong'))
         .find((el) => {
@@ -231,13 +222,12 @@
     if (document.querySelectorAll('[data-testid="b"]').length > 0) { return 'vocabulaire'; }
     const body = document.body?.textContent || '';
     if (body.includes("n'y a pas de faute") || body.includes('voyez une faute')) { return 'orthographe'; }
-    // Détecter le nouveau format vocabulaire (cartes de définitions)
     if (body.includes('synonyme') || body.includes('sens est le plus proche') ||
         body.includes('contexte professionnel')) { return 'vocabulaire'; }
     return 'inconnu';
   }
 
-  // ── Auto-clic boutons CONTINUER/SUIVANT ────────────────────────────────────
+  // ── Auto-clic boutons nav + audio ──────────────────────────────────────────
   function findBtn(text) {
     return Array.from(document.querySelectorAll('[data-testid="button"]'))
       .find((el) => el.offsetParent && el.textContent.trim().toUpperCase() === text);
@@ -249,56 +239,56 @@
   function autoClickNavButtons() {
     const now = Date.now();
     if (now - lastAutoClickTime < 2000) { return; }
-    // Ne pas cliquer SUIVANT pendant l'analyse
     if (analyzing) { return; }
+    if (window.location.href.includes('selection')) { return; }
 
-    // Ne pas auto-cliquer sur la page de sélection de module
-    if (window.location.href.includes('selection-module') ||
-        window.location.href.includes('selection')) { return; }
-
-    // Détecter "Je ne peux pas écouter" — skipper seulement si pas d'options visibles
-    const hasOptions = Array.from(document.querySelectorAll('div, button'))
-      .some((el) => {
+    // 1. Fermer modale "Fonctionnalités sonores" → DÉSACTIVER
+    const desactiverBtn = Array.from(document.querySelectorAll('button[data-testid="button"]'))
+      .find((el) => {
         if (!el.offsetParent) { return false; }
-        const rect = el.getBoundingClientRect();
-        const s = window.getComputedStyle(el);
-        const t = el.textContent.trim();
-        const u = t.toUpperCase();
-        return rect.width > 100 && rect.height > 30 && s.cursor === 'pointer' &&
-               t.length > 5 && t.length < 120 &&
-               !u.includes('ÉCOUTER') && !u.includes('ECOUTER') &&
-               !u.includes('NE PEUX PAS') && !u.includes('CONTINUER') &&
-               !u.includes('COMMENCER') && !u.includes('SUIVANT') &&
-               !u.includes('ARRÊTER') && !u.includes('DÉMARRER');
+        const t = el.textContent.trim().toUpperCase();
+        return t === 'DÉSACTIVER' || t === 'DESACTIVER';
       });
+    if (desactiverBtn) {
+      console.log('🔇 Modale audio → DÉSACTIVER');
+      lastAutoClickBtn = desactiverBtn;
+      lastAutoClickTime = now;
+      lastAnalyzedContent = '';
+      analyzing = false;
+      setTimeout(() => { desactiverBtn.click(); lastAutoClickBtn = null; }, 300);
+      return;
+    }
 
-    const audioSkipBtn = Array.from(document.querySelectorAll('[data-testid="button"], button, div'))
+    // 2. Cliquer "JE NE PEUX PAS ÉCOUTER"
+    const audioSkipBtn = Array.from(document.querySelectorAll('button[data-testid="button"]'))
       .find((el) => {
         if (!el.offsetParent) { return false; }
         const t = el.textContent.trim().toUpperCase();
         return t.includes('NE PEUX PAS') || t.includes('ÉCOUTER') || t.includes('ECOUTER');
       });
-
-    if (audioSkipBtn && !hasOptions) {
-      console.log('🔇 Bouton audio détecté → skip');
+    if (audioSkipBtn) {
+      console.log('🔇 Audio → skip');
       lastAutoClickBtn = audioSkipBtn;
       lastAutoClickTime = now;
+      lastAnalyzedContent = '';
+      analyzing = false;
       setTimeout(() => { audioSkipBtn.click(); lastAutoClickBtn = null; }, 300);
       return;
     }
 
-    const suivant = findBtn('SUIVANT');
-    const continuer = findBtn('CONTINUER');
-    const btn = suivant || continuer;
-
+    // 3. SUIVANT / CONTINUER — seulement si une réponse a été donnée
+    const btn = findBtn('SUIVANT') || findBtn('CONTINUER');
     if (btn && btn !== lastAutoClickBtn) {
+      // Ne cliquer CONTINUER que si on a déjà analysé au moins une fois
+      const hasResult = resultEl && !resultEl.textContent.includes("En attente") &&
+                        !resultEl.textContent.includes('Analyse') &&
+                        !resultEl.textContent.includes('Synonyme') &&
+                        !resultEl.textContent.includes('Nouvelle page');
+      if (!hasResult && btn.textContent.trim().toUpperCase() === 'CONTINUER') { return; }
       console.log(`🤖 Auto-clic: ${btn.textContent.trim()}`);
       lastAutoClickBtn = btn;
       lastAutoClickTime = now;
-      setTimeout(() => {
-        btn.click();
-        lastAutoClickBtn = null;
-      }, 300 + Math.random() * 400);
+      setTimeout(() => { btn.click(); lastAutoClickBtn = null; }, 300 + Math.random() * 400);
     }
   }
 
@@ -370,12 +360,10 @@
     const vw = window.innerWidth;
     const vh = window.innerHeight;
 
-    // Chercher uniquement les éléments dans le viewport visible
     const allDivs = Array.from(document.querySelectorAll('div[class*="r-1loqt21"]'))
       .filter((el) => {
         if (!el.offsetParent) { return false; }
         const r = el.getBoundingClientRect();
-        // Doit être dans le viewport
         return r.width > 0 && r.height > 0 &&
                r.left >= 0 && r.top >= 0 &&
                r.right <= vw && r.bottom <= vh;
@@ -394,11 +382,7 @@
     }
 
     const rect = el.getBoundingClientRect();
-    const x = Math.round(rect.left + rect.width / 2);
-    const y = Math.round(rect.top + rect.height / 2);
-    console.log(`🖱️ Auto-clic sur "${el.textContent.trim()}" à (${x},${y})`);
-
-    // .click() direct — le plus fiable pour les éléments dans le viewport
+    console.log(`🖱️ Auto-clic sur "${el.textContent.trim()}" à (${Math.round(rect.left + rect.width/2)},${Math.round(rect.top + rect.height/2)})`);
     el.click();
     return true;
   }
@@ -410,13 +394,10 @@
   async function loop() {
     while (true) {
       await new Promise((r) => setTimeout(r, 800));
-
       if (!running) { continue; }
 
-      // Auto-clic SUIVANT/CONTINUER
       autoClickNavButtons();
 
-      // Changement de page
       if (window.location.href !== lastUrl) {
         lastUrl = window.location.href;
         lastAnalyzedContent = '';
@@ -433,7 +414,6 @@
         const sentence = extractSentence();
         if (!sentence || sentence === lastAnalyzedContent) { continue; }
 
-        // Attendre que la phrase soit stable (2 lectures identiques à 800ms d'intervalle)
         await new Promise((r) => setTimeout(r, 800));
         const sentence2 = extractSentence();
         if (!sentence2 || sentence2 !== sentence) { continue; }
@@ -449,25 +429,16 @@
           setResult('✅ Pas de faute', '');
           setStatus('Clic dans 3s...');
           await new Promise((r) => setTimeout(r, 3000));
-          // Auto-clic "Il n'y a pas de faute"
           const noFaultBtn = Array.from(document.querySelectorAll('[data-testid="button"]'))
             .find((el) => el.offsetParent && el.textContent.trim().toUpperCase().includes('PAS DE FAUTE'));
-          if (noFaultBtn) {
-            noFaultBtn.click();
-            setStatus('✅ Cliqué !');
-          } else {
-            setStatus('⚠️ Cliquer manuellement');
-          }
+          if (noFaultBtn) { noFaultBtn.click(); setStatus('✅ Cliqué !'); }
+          else { setStatus('⚠️ Cliquer manuellement'); }
         } else {
           setResult('⚠️ Faute détectée :', fault, '#f38ba8');
           setStatus('Clic dans 3s...');
           await new Promise((r) => setTimeout(r, 3000));
           const clicked = await autoClickWord(fault);
-          if (clicked) {
-            setStatus('✅ Cliqué !');
-          } else {
-            setStatus('⚠️ Clic échoué — cliquer manuellement');
-          }
+          setStatus(clicked ? '✅ Cliqué !' : '⚠️ Clic échoué — cliquer manuellement');
         }
         analyzing = false;
 
@@ -475,7 +446,6 @@
         const data = extractVocabulaire();
         if (!data || data.word === lastAnalyzedContent) { continue; }
 
-        // Attendre stabilisation
         await new Promise((r) => setTimeout(r, 800));
         const data2 = extractVocabulaire();
         if (!data2 || data2.word !== data.word) { continue; }
@@ -492,56 +462,24 @@
           setStatus('Clic dans 3s...');
           await new Promise((r) => setTimeout(r, 3000));
 
-          // Re-chercher l'élément APRÈS le délai (le DOM React peut avoir été recréé)
-          const freshOptions = Array.from(document.querySelectorAll('div, button'))
+          const freshEl = Array.from(document.querySelectorAll('div, button'))
             .filter((el) => {
               if (!el.offsetParent) { return false; }
               const rect = el.getBoundingClientRect();
               const s = window.getComputedStyle(el);
               return rect.width > 100 && rect.height > 30 && s.cursor === 'pointer';
+            })
+            .find((el) => {
+              const t = el.textContent.trim().toLowerCase();
+              return t.includes(synonym.toLowerCase()) ||
+                     (synonym.toLowerCase().includes(t) && t.length > 5);
             });
 
-          const freshEl = freshOptions.find((el) => {
-            const t = el.textContent.trim().toLowerCase();
-            return t.includes(synonym.toLowerCase()) ||
-                   synonym.toLowerCase().includes(t) && t.length > 5;
-          });
-
           if (freshEl) {
-            const rect = freshEl.getBoundingClientRect();
-            const x = Math.round(rect.left + rect.width / 2);
-            const y = Math.round(rect.top + rect.height / 2);
-            console.log(`🖱️ Clic carte "${freshEl.textContent.trim().slice(0,30)}" à (${x},${y})`);
-
-            // Clic réel sur l'élément (React 19 nécessite un vrai événement DOM)
             freshEl.scrollIntoView({ block: 'center', behavior: 'instant' });
             await new Promise((r) => setTimeout(r, 150));
-            let clicked = false;
-
-            // Essai 1 : .click() natif
-            try { freshEl.click(); clicked = true; console.log('✅ via .click()'); } catch (e) { /* ignore */ }
-
-            // Essai 2 : MouseEvents sur l'élément directement
-            if (!clicked) {
-              const opts = { bubbles: true, cancelable: true, clientX: x, clientY: y };
-              freshEl.dispatchEvent(new MouseEvent('mousedown', opts));
-              await new Promise((r) => setTimeout(r, 50));
-              freshEl.dispatchEvent(new MouseEvent('mouseup', opts));
-              freshEl.dispatchEvent(new MouseEvent('click', opts));
-              clicked = true;
-              console.log('✅ via MouseEvent sur élément');
-            }
-
-            // Essai 2 : MouseEvent sur document avec coords
-            if (!clicked) {
-              const opts = { bubbles: true, cancelable: true, clientX: x, clientY: y };
-              document.dispatchEvent(new MouseEvent('mousedown', opts));
-              await new Promise((r) => setTimeout(r, 80));
-              document.dispatchEvent(new MouseEvent('mouseup', opts));
-              document.dispatchEvent(new MouseEvent('click', opts));
-              console.log('✅ via MouseEvent document');
-            }
-
+            freshEl.click();
+            console.log(`✅ Clic carte "${freshEl.textContent.trim().slice(0,30)}"`);
             setStatus('✅ Cliqué !');
           } else {
             setStatus('⚠️ Cliquer manuellement');
@@ -554,7 +492,7 @@
 
       } else {
         if (lastAnalyzedContent !== 'inconnu') {
-          setResult('En attente d\'un exercice...', '');
+          setResult("En attente d'un exercice...", '');
           setStatus('');
           lastAnalyzedContent = 'inconnu';
         }
@@ -563,7 +501,7 @@
   }
 
   // ── Init ────────────────────────────────────────────────────────────────────
-  console.log('%c🤖 PV Bot v3.0 chargé', 'color:#cba6f7;font-weight:bold;font-size:14px');
+  console.log('%c🤖 PV Bot v3.1 chargé', 'color:#cba6f7;font-weight:bold;font-size:14px');
 
   function init() {
     if (document.getElementById('pv-panel')) { return; }
