@@ -37,6 +37,8 @@ $env:OLLAMA_ORIGINS="*"; ollama serve
 # Puis redémarrer Ollama depuis le systray
 ```
 
+> **Avertissement** : `OLLAMA_ORIGINS="*"` autorise toutes les origines à accéder à ton serveur Ollama local. Sur un réseau partagé (WiFi public, bureau), cela expose ton instance Ollama aux autres machines du réseau. Utilise cette configuration uniquement sur un réseau de confiance.
+
 ### 2. Modèle LLM
 
 Le script utilise `gpt-oss:120b-cloud` par défaut. Tu peux utiliser n'importe quel modèle Ollama :
